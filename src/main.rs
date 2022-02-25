@@ -4,7 +4,8 @@ use std::thread;
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::ffi::{CString, CStr};
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
+use std::error::Error;
 use std::env;
 
 use serenity::{
@@ -43,8 +44,12 @@ use songbird::{CoreEvent, SerenityInit};
 
 mod vosk;
 mod voice_recv;
+mod config;
+use config::Config;
 
-static MODEL: Lazy<vosk::Model> = Lazy::new(|| vosk::Model::new("./model"));
+static MODEL: OnceCell<vosk::Model> = OnceCell::new();
+
+static CONFIG: OnceCell<Config> = OnceCell::new();
 
 // fn main() -> Result<(), Box<dyn std::error::Error>> {
 //     // use vosk::sys::*;
@@ -111,28 +116,35 @@ static MODEL: Lazy<vosk::Model> = Lazy::new(|| vosk::Model::new("./model"));
 //     Ok(())
 // }
 
+fn get_config() -> Result<&'static Config, Box<dyn Error + Send + Sync>> {
+    CONFIG.get_or_try_init(|| Ok(Config::from_file("./config.yaml")?))
+}
+
 #[tokio::main]
-async fn main() {
-    // Configure the client with your Discord bot token in the environment.
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let config = get_config()?;
 
-    // The Application Id is usually the Bot User Id.
-    let application_id: u64 = env::var("APPLICATION_ID")
-        .expect("Expected an application id in the environment")
-        .parse()
-        .expect("application id is not a valid id");
-
-    // Load the model before connecting because it is slow
-    Lazy::force(&MODEL);
+    // Load the model before connecting because it is slow; check
+    // model exists because VOSK error reporting is bad
+    if config.model_path.exists() {
+        MODEL.set(
+            vosk::Model::new(&config.model_path)
+                .ok_or_else(|| format!("Could not create vosk model from {:?}", config.model_path))?
+        )
+            .unwrap();
+    } else {
+        eprintln!("Model {:?} not found", config.model_path);
+        std::process::exit(-1);
+    }
 
     let songbird_config = songbird::Config::default()
         .decode_mode(songbird::driver::DecodeMode::Decode);
     
 
     // Build our client.
-    let mut client = Client::builder(token)
+    let mut client = Client::builder(&*config.bot_token)
         .event_handler(Handler::default())
-        .application_id(application_id)
+        .application_id(config.application_id)
         .register_songbird_from_config(songbird_config)
         .await
         .expect("Error creating client");
@@ -143,10 +155,12 @@ async fn main() {
     // exponential backoff until it reconnects.
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
-    } 
+    }
+
+    Ok(())
 }
 
-#[derive(Default)]    
+#[derive(Default)]
 struct Handler;
 
 impl Handler {
@@ -175,11 +189,11 @@ impl Handler {
 
                             if let (handler_lock, Ok(_)) = manager.join(guild_id, ch.id).await {
                                 let mut handler = handler_lock.lock().await;
-                                let webhook = ctx.http.get_webhook_from_url(env::var("WEBHOOK_URL")).await.unwrap();
+                                let webhook = ctx.http.get_webhook_from_url(&*get_config().unwrap().webhook_url).await.unwrap();
                                 let recv = voice_recv::ArcVoiceReceive(
                                     Arc::new(
                                         voice_recv::VoiceReceive::new(
-                                            &*MODEL,
+                                            MODEL.get().unwrap(),
                                             ctx.cache.clone(),
                                             ctx.http.clone(),
                                             serenity::model::id::ChannelId(946600847905808414),

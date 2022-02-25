@@ -34,20 +34,22 @@ pub mod sys {
 use std::path::Path;
 use std::ffi::{CString, CStr};
 use std::os::raw::{c_int, c_uint};
+use std::ptr::NonNull;
 use serde::Deserialize;
 
-pub struct Model(*mut sys::VoskModel);
+#[derive(Debug)]
+pub struct Model(NonNull<sys::VoskModel>);
 
 unsafe impl Send for Model {}
 unsafe impl Sync for Model {}
 
 impl Model {
-    pub fn new(path: impl AsRef<Path>) -> Model {
+    pub fn new(path: impl AsRef<Path>) -> Option<Model> {
         use std::os::unix::ffi::OsStrExt;
-        let path = CString::new(path.as_ref().to_owned().as_os_str().as_bytes()).unwrap();
+        let path = CString::new(path.as_ref().to_owned().as_os_str().as_bytes()).ok()?;
 
         unsafe {
-            Model(sys::vosk_model_new(path.as_ptr()))
+            Some(Model(NonNull::new(sys::vosk_model_new(path.as_ptr()))?))
         }
     }
 
@@ -55,7 +57,7 @@ impl Model {
         let word = CString::new(word).unwrap();
 
         let res = unsafe {
-            sys::vosk_model_find_word(self.0, word.as_ptr())
+            sys::vosk_model_find_word(self.0.as_ptr(), word.as_ptr())
         };
 
         if res == -1 {
@@ -69,11 +71,12 @@ impl Model {
 impl Drop for Model {
     fn drop(&mut self) {
         unsafe {
-            sys::vosk_model_free(self.0);
+            sys::vosk_model_free(self.0.as_ptr());
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Recognizer(*mut sys::VoskRecognizer);
 
 unsafe impl Send for Recognizer {}
@@ -82,7 +85,7 @@ unsafe impl Sync for Recognizer {}
 impl Recognizer {
     pub fn new(model: &Model, sample_rate: f32) -> Recognizer {
         unsafe {
-            Recognizer(sys::vosk_recognizer_new(model.0, sample_rate))
+            Recognizer(sys::vosk_recognizer_new(model.0.as_ptr(), sample_rate))
         }
     }
 

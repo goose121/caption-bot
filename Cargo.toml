@@ -14,6 +14,7 @@ songbird = "0.2"
 discortp = "0.4"
 once_cell = "1.9"
 bimap = "0.6"
+serde_yaml = "0.8"
 
 [dependencies.serenity]
 version = "0.10"

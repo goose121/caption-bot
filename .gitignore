@@ -1,2 +1,4 @@
 /target
 /*.raw
+/config.yaml
+/model
