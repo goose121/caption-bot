@@ -139,10 +139,10 @@ impl VoiceReceive {
         }
 
         if rec.accept_waveform_i16(&*mono_data) {
-            eprintln!("{:?}", rec.partial_result_json());
+            // eprintln!("{:?}", rec.partial_result_json());
             // TODO: edit message with partial results
         } else {
-            eprintln!("{:?}", rec.partial_result_json());
+            // eprintln!("{:?}", rec.partial_result_json());
             // TODO
         }
     }
