@@ -1,0 +1,57 @@
+{
+  "db": "SQLite",
+  "03a8bb02b74ea1d96b6c1afd84e0e777e87392766bfe133c38040571f9707a94": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 0
+      }
+    },
+    "query": "CREATE TABLE IF NOT EXISTS guilds (\n                 guild_id BIGINT PRIMARY KEY,\n                 caption_channel BIGINT,\n                 lang CHAR(3)\n             )"
+  },
+  "190cb3da10b1d6ad885a71befdcf22699bef412a976fdd90a90cde4a782d41b1": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 3
+      }
+    },
+    "query": "INSERT INTO guilds (guild_id, caption_channel, lang) VALUES (?1, ?2, ?3)"
+  },
+  "23030b020f6d077233fdaad4ae52693d26514f3d6096ab9b4a8ec1df67ac775a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "caption_channel",
+          "ordinal": 0,
+          "type_info": "Int64"
+        },
+        {
+          "name": "lang",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        true,
+        true
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "SELECT caption_channel, lang FROM guilds WHERE guilds.guild_id = ?"
+  },
+  "e0bf8535bc7ebcdff803e95f4061f6f7814447555735444910175be3aa476cd3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 2
+      }
+    },
+    "query": "UPDATE guilds SET caption_channel = ?1\n                 WHERE guild_id = ?2"
+  }
+}

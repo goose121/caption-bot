@@ -8,6 +8,8 @@ use once_cell::sync::OnceCell;
 use std::error::Error;
 use std::env;
 
+use tokio::sync::Mutex as TokioMutex;
+
 use serenity::{
     async_trait,
     model::{
@@ -46,6 +48,8 @@ mod vosk;
 mod voice_recv;
 mod config;
 use config::Config;
+mod db;
+use db::BotDb;
 
 static MODEL: OnceCell<vosk::Model> = OnceCell::new();
 
@@ -116,6 +120,27 @@ static CONFIG: OnceCell<Config> = OnceCell::new();
 //     Ok(())
 // }
 
+#[derive(Debug)]
+enum BotError<M> {
+    UserMessage(M),
+    Error(Option<Box<dyn Error + Send + Sync>>)
+}
+
+impl<M, E: Error + Send + Sync + 'static> From<E> for BotError<M> {
+    fn from(e: E) -> BotError<M> {
+        BotError::Error(Some(Box::new(e)))
+    }
+}
+
+impl<'a> From<BotError<&'a str>> for BotError<String> {
+    fn from(e: BotError<&'a str>) -> BotError<String> {
+        match e {
+            BotError::UserMessage(m) => BotError::UserMessage(m.into()),
+            BotError::Error(e) => BotError::Error(e)
+        }
+    }
+}
+
 fn get_config() -> Result<&'static Config, Box<dyn Error + Send + Sync>> {
     CONFIG.get_or_try_init(|| Ok(Config::from_file("./config.yaml")?))
 }
@@ -139,11 +164,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let songbird_config = songbird::Config::default()
         .decode_mode(songbird::driver::DecodeMode::Decode);
-    
+
+    let db = BotDb::new(&config.db_path).await?;
 
     // Build our client.
     let mut client = Client::builder(&*config.bot_token)
-        .event_handler(Handler::default())
+        .event_handler(Handler::new(db))
         .application_id(config.application_id)
         .register_songbird_from_config(songbird_config)
         .await
@@ -160,15 +186,23 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
-#[derive(Default)]
-struct Handler;
+struct Handler {
+    // Use Mutex for now because SqliteConnection is not Sync
+    db: TokioMutex<BotDb>
+}
 
 impl Handler {
+    fn new(db: BotDb) -> Handler {
+        Handler {
+            db: TokioMutex::new(db)
+        }
+    }
+
     async fn handle_interaction(
         &self,
         ctx: &Context,
         interaction: &Interaction
-    ) -> Result<(), String>
+    ) -> Result<(), BotError<String>>
     {
         match interaction {
             Interaction::ApplicationCommand(cmd) => {
@@ -178,14 +212,35 @@ impl Handler {
                             .data
                             .options
                             .get(0)
-                            .ok_or("Expected channel option")?
+                            .ok_or(BotError::UserMessage("Expected channel option"))?
                             .resolved
                             .as_ref()
-                            .ok_or("Expected channel object")?;
+                            .ok_or(BotError::UserMessage("Expected channel object"))?;
 
                         if let ApplicationCommandInteractionDataOptionValue::Channel(ch) = opt {
-                            let guild_id = cmd.guild_id.unwrap();
-                            let manager = songbird::get(ctx).await.unwrap();
+                            let guild_id = cmd
+                                .guild_id
+                                .ok_or(BotError::UserMessage("This command can only be used in servers"))?;
+                            let db = self.db.lock().await;
+                            let cfg_fut ={
+                                let db = &*db;
+                                db.guild_config(guild_id)
+                            };
+
+                            let guild_config = match cfg_fut.await {
+                                Ok(Some(c)) => c,
+                                Ok(None) => {
+                                    let fut = {
+                                        let db = &*db;
+                                        db.add_guild(guild_id)
+                                    };
+                                    fut.await?
+                                },
+                                Err(e) => return Err(e.into())
+                            };
+                            drop(db);
+
+                            let manager = songbird::get(ctx).await.ok_or(BotError::<String>::Error(None))?;
 
                             if let (handler_lock, Ok(_)) = manager.join(guild_id, ch.id).await {
                                 let mut handler = handler_lock.lock().await;
@@ -196,7 +251,7 @@ impl Handler {
                                             MODEL.get().unwrap(),
                                             ctx.cache.clone(),
                                             ctx.http.clone(),
-                                            serenity::model::id::ChannelId(946600847905808414),
+                                            guild_config.caption_channel.ok_or(BotError::UserMessage("There is no default caption channel in this server"))?,
                                             webhook)));
 
                                 handler.add_global_event(
@@ -276,7 +331,11 @@ impl EventHandler for Handler {
             response.kind(InteractionResponseType::ChannelMessageWithSource);
             response.interaction_response_data(|d| {
                 d.flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
-                d.content(why1.clone())
+                d.content(
+                    match &why1 {
+                        BotError::UserMessage(s) => s.clone(),
+                        BotError::Error(_) => "Error running command".to_string()
+                    })
             });
             if let Err(why2) =
                 match interaction {
@@ -293,12 +352,12 @@ impl EventHandler for Handler {
                     //         .await
                     // },
                     _ => {
-                        eprintln!("Interaction {:?}: {}", interaction, why1);
+                        eprintln!("Interaction {:?}: {:?}", interaction, why1);
                         Ok(())
                     }
                 }
             {
-                eprintln!("Cannot display error {:?}: {}", why1, why2);
+                eprintln!("Cannot display error {:?}: {:?}", why1, why2);
             }
         }
     }

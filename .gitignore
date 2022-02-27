@@ -2,3 +2,5 @@
 /*.raw
 /config.yaml
 /model
+/*.sqlite
+/*.sqlite-*

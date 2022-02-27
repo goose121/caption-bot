@@ -8,7 +8,8 @@ pub struct Config {
     pub bot_token: String,
     pub application_id: u64,
     pub model_path: PathBuf,
-    pub webhook_url: String
+    pub webhook_url: String,
+    pub db_path: PathBuf
 }
 
 impl Config {
