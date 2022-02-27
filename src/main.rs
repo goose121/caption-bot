@@ -290,6 +290,48 @@ impl Handler {
                                 .await?;
                         }
                     },
+                    "set" => {
+                        let sub = cmd
+                            .data
+                            .options
+                            .get(0)
+                            .ok_or(BotError::UserMessage("Expected subcommand"))?;
+
+                        match &*sub.name {
+                            "channel" => {
+                                let opt = sub
+                                    .options
+                                    .get(0)
+                                    .ok_or(BotError::UserMessage("Expected channel option"))?
+                                    .resolved
+                                    .as_ref()
+                                    .ok_or(BotError::UserMessage("Expected channel object"))?;
+
+                                if let ApplicationCommandInteractionDataOptionValue::Channel(ch) = opt {
+                                    let guild_id = cmd
+                                        .guild_id
+                                        .ok_or(BotError::UserMessage("This command can only be used in servers"))?;
+                                    let db = self.db.lock().await;
+
+                                    let fut = {
+                                        db.set_caption_channel(guild_id, Some(ch.id))
+                                    };
+
+                                    fut.await?;
+
+                                    cmd
+                                        .create_interaction_response(ctx, |r| {
+                                            r.kind(InteractionResponseType::ChannelMessageWithSource);
+                                            r.interaction_response_data(|d| {
+                                                d.content(format!("Caption channel set to {}", ch.id.mention()))
+                                            })
+                                        })
+                                        .await?;
+                                }
+                            },
+                            _ => {}
+                        }
+                    }
                     _ => {
                         return Err(
                             BotError::UserMessage(
@@ -322,6 +364,21 @@ impl EventHandler for Handler {
                             .description("The channel to join")
                             .kind(ApplicationCommandOptionType::Channel)
                             .required(true)
+                    })
+                })
+                .create_application_command(|command| {
+                    command.name("set").description("Set captioning options").create_option(|option| {
+                        option
+                            .name("channel")
+                            .description("The channel to join")
+                            .kind(ApplicationCommandOptionType::SubCommand)
+                            .create_sub_option(|o| {
+                                o
+                                    .name("channel")
+                                    .description("The channel to join")
+                                    .kind(ApplicationCommandOptionType::Channel)
+                                    .required(true)
+                            })
                     })
                 })
         })
