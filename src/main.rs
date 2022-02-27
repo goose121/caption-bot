@@ -282,13 +282,18 @@ impl Handler {
 
                             cmd
                                 .create_interaction_response(ctx, |r| {
-                                    r.kind(InteractionResponseType::Pong)
+                                    r.kind(InteractionResponseType::ChannelMessageWithSource);
+                                    r.interaction_response_data(|d| {
+                                        d.content(format!("Captioning {}", ch.id.mention()))
+                                    })
                                 })
-                                .await;
+                                .await?;
                         }
                     },
                     _ => {
-                        eprintln!("Command {:?} not implemented", cmd.data.name.as_str());
+                        return Err(
+                            BotError::UserMessage(
+                                format!("Command {:?} not implemented", cmd.data.name.as_str())));
                     }
                 }
             },
