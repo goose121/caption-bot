@@ -18,6 +18,7 @@ use serenity::{
             GuildId,
             MessageId,
         },
+        application::command::CommandType, 
         interactions::{
             application_command::{
                 ApplicationCommand,
@@ -331,7 +332,60 @@ impl Handler {
                             },
                             _ => {}
                         }
-                    }
+                    },
+                    "Caption Message" => {
+                        use magnum::container::ogg::OpusSourceOgg;
+
+                        cmd
+                            .create_interaction_response(ctx, |r| {
+                                r.kind(InteractionResponseType::DeferredChannelMessageWithSource)
+                            })
+                            .await?;
+
+                        let msg_id = cmd
+                            .data
+                            .target_id
+                            .ok_or(BotError::UserMessage("No message supplied to caption"))?;
+
+                        let msg = &cmd
+                            .data
+                            .resolved
+                            .messages[&msg_id.to_message_id()];
+
+                        if msg.attachments.len() != 1 {
+                            return Err(
+                                BotError::UserMessage(
+                                    format!("Sorry, only messages with 1 attachment are supported")));
+                        }
+
+                        let attach = &msg.attachments[0];
+
+                        let audio_bytes = attach.download().await?;
+
+                        let mut source = OpusSourceOgg::new(std::io::Cursor::new(audio_bytes))
+                            .or(Err(BotError::UserMessage("Unsupported format (only OGG/Opus supported for now)")))?;
+
+                        let sample_rate = source.metadata.sample_rate;
+
+                        let mut rec = vosk::Recognizer::new(MODEL.get().unwrap(), sample_rate as f32);
+
+                        let buf: Vec<i16> = source.map(|f| (f * 32767.0) as i16).collect();
+
+                        rec.accept_waveform_i16(&*buf);
+
+                        let partial: std::ffi::CString = rec.partial_result_json().to_owned();
+                        let json: std::ffi::CString = rec.final_result_json().to_owned();
+                        let text = serde_json::from_slice::<vosk::SimpleResult>(json.to_bytes())
+                            .unwrap()
+                            .text;
+
+                        cmd.edit_original_interaction_response(ctx, |r| {
+                            r.content(format!("Transcript of [voice message](<{}>):\n{}", msg.link(), text))
+                        })
+                            .await
+                            .or(Err(BotError::UserMessage("No response to edit")))?;
+
+                    },
                     _ => {
                         return Err(
                             BotError::UserMessage(
@@ -380,6 +434,9 @@ impl EventHandler for Handler {
                                     .required(true)
                             })
                     })
+                })
+                .create_application_command(|command| {
+                    command.name("Caption Message").kind(CommandType::Message)
                 })
         })
             .await;
