@@ -168,7 +168,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let db = BotDb::new(&config.db_path).await?;
 
     // Build our client.
-    let mut client = Client::builder(&*config.bot_token)
+    let mut client = Client::builder(&*config.bot_token, GatewayIntents::default())
         .event_handler(Handler::new(db))
         .application_id(config.application_id)
         .register_songbird_from_config(songbird_config)
