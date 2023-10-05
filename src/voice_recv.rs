@@ -79,9 +79,12 @@ impl VoiceReceive {
                 self.ssrc_map.lock().unwrap().get_by_left(&ssrc).copied()
             };
 
+            let m: serenity::model::prelude::Member;
+            let n: std::borrow::Cow<'_, String>;
+
             let (name, avatar) = match u {
                 Some(u) => {
-                    let m = self
+                    m = self
                         .chan
                         .to_channel((&self.ctx.0, &*self.ctx.1))
                         .await
@@ -92,9 +95,10 @@ impl VoiceReceive {
                         .member((&self.ctx.0, &*self.ctx.1), u)
                         .await
                         .unwrap();
-                    (m.display_name().into_owned(), m.face())
+                    n = m.display_name();
+                    (n.as_str(), m.face())
                 },
-                None => ("Unknown user".to_string(), String::new())
+                None => ("Unknown user", String::new())
             };
 
             if !text.is_empty() {
@@ -107,7 +111,7 @@ impl VoiceReceive {
                     |w| {
                         w.content(text);
                         w.avatar_url(avatar);
-                        w.username(name)
+                        w.username(format!("[caption] {}", name))
                     })
                     .await
                     .unwrap();
