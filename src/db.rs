@@ -91,8 +91,8 @@ impl BotDb {
         sqlx::query![
             "UPDATE guilds SET caption_channel = ?1
                  WHERE guild_id = ?2",
-            g,
-            c]
+            c,
+            g]
             .execute(&self.conn)
             .await?;
 
