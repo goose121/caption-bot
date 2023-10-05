@@ -436,7 +436,7 @@ impl EventHandler for Handler {
                     })
                 })
                 .create_application_command(|command| {
-                    command.name("Caption Message").kind(CommandType::Message)
+                    command.name("Transcribe Message").kind(CommandType::Message)
                 })
         })
             .await;
