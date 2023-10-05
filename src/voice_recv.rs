@@ -68,7 +68,6 @@ impl VoiceReceive {
 
 
         if let Some(mut rec) = r {
-            // rec.accept_waveform_i16(&*vec![0i16; 1]);
             let partial: std::ffi::CString = rec.partial_result_json().to_owned();
             let json: std::ffi::CString = rec.final_result_json().to_owned();
             let text = serde_json::from_slice::<vosk::SimpleResult>(json.to_bytes())
@@ -103,7 +102,6 @@ impl VoiceReceive {
 
             if !text.is_empty() {
                 let map = json!({"name": "CaptionBot"});
-                // let webhook = self.ctx.1.create_webhook(self.chan.0, &map).await.unwrap();
 
                 self.webhook.execute(
                     &self.ctx.1,
@@ -115,8 +113,6 @@ impl VoiceReceive {
                     })
                     .await
                     .unwrap();
-
-                // webhook.delete(&self.ctx.1).await.unwrap();
             }
         }
     }

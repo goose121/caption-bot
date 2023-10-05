@@ -59,71 +59,6 @@ static MODEL: OnceCell<vosk::Model> = OnceCell::new();
 
 static CONFIG: OnceCell<Config> = OnceCell::new();
 
-// fn main() -> Result<(), Box<dyn std::error::Error>> {
-//     // use vosk::sys::*;
-//     // unsafe {
-//     //     let path = CString::new("./model")?;
-//     //     let model = vosk_model_new(path.as_ptr());
-//     //     let rec = vosk_recognizer_new(model, 16000.0);
-
-//     //     let mut bytes = [0u8; 3200];
-
-//     //     while let Ok(n_bytes) = stdin().read(&mut bytes) {
-//     //         if n_bytes == 0 {
-//     //             break;
-//     //         }
-//     //         let is_final = vosk_recognizer_accept_waveform(rec, bytes.as_ptr(), n_bytes);
-//     //         let res = if is_final == 1 {
-//     //             vosk_recognizer_result(rec)
-//     //         } else {
-//     //             // vosk_recognizer_partial_result(rec)
-//     //             continue
-//     //         };
-
-//     //         let cs = CStr::from_ptr(res as *mut i8);
-//     //         println!("{:?}", cs);
-//     //     }
-
-//     //     let res = vosk_recognizer_final_result(rec);
-//     //     let cs = CStr::from_ptr(res as *mut i8);
-//     //     println!("{:?}", cs);
-
-//     //     vosk_recognizer_free(rec);
-//     //     vosk_model_free(model);
-//     // }
-
-//     // Ok(())
-
-//     use vosk::{Model, Recognizer};
-
-//     let model = Model::new("./model");
-//     let mut rec = Recognizer::new(&model, 48000.0);
-
-//     // rec.set_max_alternatives(5);
-
-//     let mut bytes = [0u8; 8192];
-
-//     while let Ok(n_bytes) = stdin().read(&mut bytes) {
-//         if n_bytes == 0 {
-//             break;
-//         }
-//         let is_final = rec.accept_waveform(&bytes[..n_bytes]);
-//         let res = if is_final {
-//             rec.result_json()
-//         } else {
-//             // rec.partial_result()
-//             continue
-//         };
-
-//         println!("{}", serde_json::from_slice::<vosk::SimpleResult>(res.to_bytes()).unwrap().text);
-//     }
-
-//     let res = rec.final_result_json();
-//     println!("final: {}", serde_json::from_slice::<vosk::SimpleResult>(res.to_bytes()).unwrap().text);
-
-//     Ok(())
-// }
-
 #[derive(Debug)]
 enum BotError<M> {
     UserMessage(M),
@@ -269,11 +204,6 @@ impl Handler {
 
                             if let (driver_lock, Ok(_)) = manager.join(guild_id, ch.id).await {
                                 let mut driver = driver_lock.lock().await;
-                                // let webhook = ctx
-                                //     .http
-                                //     .get_webhook_from_url(&*get_config().unwrap().webhook_url)
-                                //     .await
-                                //     .unwrap();
 
                                 let guild_ch = match ctx.http.get_channel(ch.id.0).await? {
                                     Channel::Guild(ch) => ch,
@@ -286,8 +216,6 @@ impl Handler {
                                             MODEL.get().unwrap(),
                                             ctx.cache.clone(),
                                             ctx.http.clone(),
-                                            // guild_config.caption_channel.ok_or(BotError::UserMessage("There is no default caption channel in this server"))?,
-                                            // webhook
                                             ch.id,
                                             Self::init_webhook(ctx, &guild_ch).await?
                                         )));
@@ -503,10 +431,6 @@ impl EventHandler for Handler {
                         i.create_interaction_response(&ctx, |r| {*r = response; r})
                             .await
                     },
-                    // Interaction::ModalSubmit(i) => {
-                    //     i.create_interaction_response(&ctx, |r| *r = response)
-                    //         .await
-                    // },
                     _ => {
                         eprintln!("Interaction {:?}: {:?}", interaction, why1);
                         Ok(())
