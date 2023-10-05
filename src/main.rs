@@ -18,7 +18,9 @@ use serenity::{
             GuildId,
             MessageId,
         },
-        application::command::CommandType, 
+        webhook::Webhook,
+        channel::{GuildChannel, Channel},
+        application::command::CommandType,
         interactions::{
             application_command::{
                 ApplicationCommand,
@@ -32,6 +34,7 @@ use serenity::{
             InteractionApplicationCommandCallbackDataFlags,
         },
     },
+    http::Http,
     builder::{
         CreateInteractionResponse,
         CreateComponents,
@@ -199,6 +202,17 @@ impl Handler {
         }
     }
 
+    async fn init_webhook(http: impl AsRef<Http>, chan: &GuildChannel) -> Result<Webhook, BotError<String>> {
+        let hooks = chan.webhooks(&http).await?;
+        let bot_id = http.as_ref().get_current_user().await?.id;
+
+        if let Some(hook) = hooks.into_iter().find(|h| h.user.as_ref().map(|u| u.id) == Some(bot_id)) {
+            Ok(hook)
+        } else {
+            Ok(chan.create_webhook(&http, "caption_bot").await?)
+        }
+    }
+
     async fn handle_interaction(
         &self,
         ctx: &Context,
@@ -255,17 +269,28 @@ impl Handler {
 
                             if let (driver_lock, Ok(_)) = manager.join(guild_id, ch.id).await {
                                 let mut driver = driver_lock.lock().await;
+                                // let webhook = ctx
+                                //     .http
+                                //     .get_webhook_from_url(&*get_config().unwrap().webhook_url)
+                                //     .await
+                                //     .unwrap();
 
+                                let guild_ch = match ctx.http.get_channel(ch.id.0).await? {
+                                    Channel::Guild(ch) => ch,
+                                    _ => return Err(BotError::UserMessage("Captioning only available for guild channels").into())
+                                };
 
-                                let webhook = ctx.http.get_webhook_from_url(&*get_config().unwrap().webhook_url).await.unwrap();
                                 let recv = voice_recv::ArcVoiceReceive(
                                     Arc::new(
                                         voice_recv::VoiceReceive::new(
                                             MODEL.get().unwrap(),
                                             ctx.cache.clone(),
                                             ctx.http.clone(),
-                                            guild_config.caption_channel.ok_or(BotError::UserMessage("There is no default caption channel in this server"))?,
-                                            webhook)));
+                                            // guild_config.caption_channel.ok_or(BotError::UserMessage("There is no default caption channel in this server"))?,
+                                            // webhook
+                                            ch.id,
+                                            Self::init_webhook(ctx, &guild_ch).await?
+                                        )));
 
                                 driver.add_global_event(
                                     CoreEvent::SpeakingStateUpdate.into(),
