@@ -241,10 +241,22 @@ impl Handler {
                             };
                             drop(db);
 
-                            let manager = songbird::get(ctx).await.ok_or(BotError::<String>::Error(None))?;
+                            let manager = songbird::get(ctx).await
+                                .ok_or(BotError::<String>::Error(None))?;
 
-                            if let (handler_lock, Ok(_)) = manager.join(guild_id, ch.id).await {
-                                let mut handler = handler_lock.lock().await;
+                            // Avoid duplicate join events. TODO: only
+                            // add handlers to new calls (detected
+                            // with get())
+                            if let Some(driver_lock) = manager.get(guild_id) {
+                                let mut driver = driver_lock.lock().await;
+
+                                driver.remove_all_global_events();
+                            }
+
+                            if let (driver_lock, Ok(_)) = manager.join(guild_id, ch.id).await {
+                                let mut driver = driver_lock.lock().await;
+
+
                                 let webhook = ctx.http.get_webhook_from_url(&*get_config().unwrap().webhook_url).await.unwrap();
                                 let recv = voice_recv::ArcVoiceReceive(
                                     Arc::new(
@@ -255,27 +267,27 @@ impl Handler {
                                             guild_config.caption_channel.ok_or(BotError::UserMessage("There is no default caption channel in this server"))?,
                                             webhook)));
 
-                                handler.add_global_event(
+                                driver.add_global_event(
                                     CoreEvent::SpeakingStateUpdate.into(),
                                     recv.clone(),
                                 );
 
-                                handler.add_global_event(
+                                driver.add_global_event(
                                     CoreEvent::SpeakingUpdate.into(),
                                     recv.clone(),
                                 );
 
-                                handler.add_global_event(
+                                driver.add_global_event(
                                     CoreEvent::VoicePacket.into(),
                                     recv.clone(),
                                 );
 
-                                handler.add_global_event(
+                                driver.add_global_event(
                                     CoreEvent::RtcpPacket.into(),
                                     recv.clone(),
                                 );
 
-                                handler.add_global_event(
+                                driver.add_global_event(
                                     CoreEvent::ClientDisconnect.into(),
                                     recv,
                                 );
